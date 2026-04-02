@@ -1,0 +1,119 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: userId (Firebase Auth UID)
+// Fields:
+//   - uid: string (required) - Firebase Auth UID
+//   - email: string (required, email format) - User's email
+//   - displayName: string (optional) - User's display name
+//   - photoURL: string (optional, url format) - User's photo URL
+//   - role: string (required, enum: ['admin', 'student']) - User's role
+//   - createdAt: string (required, ISO 8601) - Creation timestamp
+//
+// Collection: attempts
+// Document ID: attemptId (Unique ID)
+// Fields:
+//   - id: string (required) - Unique ID
+//   - userId: string (required) - Owner's UID
+//   - challengeId: string (required) - Challenge ID
+//   - timestamp: string (required, ISO 8601) - Submission timestamp
+//   - code: string (required, max 50000 chars) - Student's code
+//   - category: string (required) - Heuristic category
+//   - tipsUsed: list (required) - List of tip IDs
+//   - feedback: string (required) - Generated feedback
+//   - difficultyHypothesis: string (required) - Identified difficulty
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "biao.marcosvinicius@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role', 'createdAt']) &&
+             hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'student'] &&
+             isValidDateString(data.createdAt) &&
+             (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
+             (data.photoURL == null || isValidUrl(data.photoURL));
+    }
+
+    function isValidAttempt(data) {
+      return hasRequiredFields(['id', 'userId', 'challengeId', 'timestamp', 'code', 'category', 'tipsUsed', 'feedback', 'difficultyHypothesis']) &&
+             hasOnlyAllowedFields(['id', 'userId', 'challengeId', 'timestamp', 'code', 'category', 'tipsUsed', 'feedback', 'difficultyHypothesis']) &&
+             data.userId == request.auth.uid &&
+             data.code is string && data.code.size() < 50000 &&
+             data.category is string &&
+             data.tipsUsed is list &&
+             isValidDateString(data.timestamp);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'student' || isAdmin());
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+
+      match /attempts/{attemptId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidAttempt(request.resource.data);
+        allow delete: if isAdmin();
+        allow update: if false; // Attempts are immutable
+      }
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

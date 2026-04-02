@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Perfil do usuário/aluno no sistema.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "ID único do Firebase Auth." },
+        "email": { "type": "string", "format": "email", "description": "E-mail do usuário." },
+        "displayName": { "type": "string", "description": "Nome de exibição." },
+        "photoURL": { "type": "string", "format": "uri", "description": "URL da foto de perfil." },
+        "role": { "type": "string", "enum": ["admin", "student"], "description": "Papel do usuário." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Data de criação do perfil." }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Attempt": {
+      "title": "Attempt",
+      "description": "Uma tentativa de resolução de desafio enviada por um aluno.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID único da tentativa." },
+        "userId": { "type": "string", "description": "ID do usuário que realizou a tentativa." },
+        "challengeId": { "type": "string", "description": "ID do desafio." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Data e hora da tentativa." },
+        "code": { "type": "string", "description": "Código enviado pelo aluno." },
+        "category": { "type": "string", "description": "Categoria do resultado da análise heurística." },
+        "tipsUsed": { "type": "array", "items": { "type": "integer" }, "description": "IDs das dicas visualizadas." },
+        "feedback": { "type": "string", "description": "Feedback textual gerado." },
+        "difficultyHypothesis": { "type": "string", "description": "Hipótese de dificuldade identificada." }
+      },
+      "required": ["id", "userId", "challengeId", "timestamp", "code", "category"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Coleção de perfis de usuários."
+    },
+    "/users/{userId}/attempts/{attemptId}": {
+      "schema": "Attempt",
+      "description": "Subcoleção de tentativas vinculadas diretamente ao usuário."
+    }
+  }
+}
