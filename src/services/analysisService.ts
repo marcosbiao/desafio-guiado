@@ -3,6 +3,9 @@ import { Category, HeuristicResult, Challenge } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+/**
+ * Analisa o código do aluno usando a API do Gemini para fornecer feedback pedagógico.
+ */
 export async function analyzeCodeWithGemini(
   code: string,
   challenge: Challenge
@@ -89,52 +92,5 @@ export async function analyzeCodeWithGemini(
     console.error("Erro na análise do Gemini:", error);
     // Fallback para a análise heurística local se a IA falhar
     return challenge.analyze(code);
-  }
-}
-
-export async function simulateExecution(
-  code: string,
-  challenge: Challenge
-): Promise<{ output: string; isError: boolean }> {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [
-      {
-        parts: [
-          {
-            text: `Código C do Aluno:\n${code}\n\nDesafio: ${challenge.title}\nProblema: ${challenge.problem}\n\nPor favor, atue como um compilador e runtime de C. 
-            1. Verifique se há erros de sintaxe. Se houver, retorne apenas as mensagens de erro do compilador (estilo gcc).
-            2. Se não houver erros de sintaxe, simule a execução do programa.
-            3. Se o programa usar 'scanf', utilize valores de teste que façam sentido para o desafio (ex: se o desafio é testar se um número é positivo, use um número como 10 ou -5).
-            4. Retorne o que apareceria no terminal (STDOUT), incluindo os prompts do printf.`
-          }
-        ]
-      }
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          output: {
-            type: Type.STRING,
-            description: "O output completo do terminal ou as mensagens de erro do compilador."
-          },
-          isError: {
-            type: Type.BOOLEAN,
-            description: "Verdadeiro se houver erro de compilação, falso se o código rodou com sucesso."
-          }
-        },
-        required: ["output", "isError"]
-      },
-      systemInstruction: "Você é um simulador de terminal C (GCC Runtime). Sua única tarefa é compilar e rodar o código fornecido, retornando o output exato do terminal em formato JSON."
-    }
-  });
-
-  try {
-    const result = JSON.parse(response.text || '{"output": "Erro na simulação", "isError": true}');
-    return result;
-  } catch (e) {
-    return { output: "Erro interno ao simular execução.", isError: true };
   }
 }

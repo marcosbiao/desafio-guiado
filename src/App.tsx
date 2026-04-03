@@ -15,17 +15,15 @@ import {
   RotateCcw, 
   ChevronDown, 
   ChevronUp,
-  FileJson,
-  FileSpreadsheet,
   ArrowRight,
   Info,
   ArrowLeft,
   Zap,
   LogIn,
   LogOut,
-  Play,
-  Terminal,
-  User as UserIcon
+  User as UserIcon,
+  FileJson,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Attempt, HeuristicResult, User } from './types';
@@ -55,7 +53,7 @@ import {
   addDoc
 } from 'firebase/firestore';
 
-import { analyzeCodeWithGemini, simulateExecution } from './services/aiService';
+import { analyzeCodeWithGemini } from './services/analysisService';
 
 // --- Error Boundary ---
 interface ErrorBoundaryProps {
@@ -131,8 +129,6 @@ export default function App() {
   const [showErrors, setShowErrors] = useState(false);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isCompiling, setIsCompiling] = useState(false);
-  const [executionResult, setExecutionResult] = useState<{ output: string; isError: boolean } | null>(null);
 
   const currentChallenge = CHALLENGES[currentChallengeIndex];
 
@@ -190,50 +186,43 @@ export default function App() {
   // --- Persistência por Desafio ---
   useEffect(() => {
     if (!isHome && isAuthReady) {
-      let unsubscribe: () => void = () => {};
+      let unsubscribeAttempts: () => void = () => {};
 
       if (user) {
-        // Carregar do Firestore (Subcoleção do Usuário)
-        const q = query(
+        // Carregar Tentativas do Firestore
+        const qAttempts = query(
           collection(db, 'users', user.uid, 'attempts'),
           where('challengeId', '==', currentChallenge.id),
           orderBy('timestamp', 'desc'),
-          limit(20)
+          limit(10)
         );
 
-        unsubscribe = onSnapshot(q, (snapshot) => {
+        unsubscribeAttempts = onSnapshot(qAttempts, (snapshot) => {
           const loadedAttempts = snapshot.docs.map(doc => doc.data() as Attempt);
           setAttempts(loadedAttempts);
         }, (error) => {
           handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/attempts`);
         });
       } else {
-        // Fallback para LocalStorage se não estiver logado
-        const storageKey = `attempts_${currentChallenge.id}`;
-        const saved = localStorage.getItem(storageKey);
-        if (saved) {
-          try {
-            setAttempts(JSON.parse(saved));
-          } catch (e) {
-            console.error("Erro ao carregar histórico", e);
-            setAttempts([]);
-          }
-        } else {
-          setAttempts([]);
-        }
+        // Fallback para LocalStorage
+        const storageKeyAttempts = `attempts_${currentChallenge.id}`;
+        const savedAttempts = localStorage.getItem(storageKeyAttempts);
+        if (savedAttempts) setAttempts(JSON.parse(savedAttempts));
+        else setAttempts([]);
       }
       
-      // Resetar estado ao trocar de desafio ou entrar em um
+      // Resetar estado
       setCode(currentChallenge.templateCode);
       setUsedTips([]);
       setAnalysis(null);
       setShowSolution(false);
       setShowErrors(false);
       setShowOrientation(false);
-      setExecutionResult(null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      return () => unsubscribe();
+      return () => {
+        unsubscribeAttempts();
+      };
     }
   }, [isHome, currentChallengeIndex, currentChallenge.id, currentChallenge.templateCode, user, isAuthReady]);
 
@@ -245,7 +234,7 @@ export default function App() {
         handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}/attempts`);
       }
     } else {
-      const updated = [newAttempt, ...attempts].slice(0, 20);
+      const updated = [newAttempt, ...attempts].slice(0, 10);
       setAttempts(updated);
       localStorage.setItem(`attempts_${currentChallenge.id}`, JSON.stringify(updated));
     }
@@ -260,7 +249,6 @@ export default function App() {
   const handleVerify = async () => {
     setIsAnalyzing(true);
     setAnalysis(null);
-    setExecutionResult(null);
     
     try {
       const result = await analyzeCodeWithGemini(code, currentChallenge);
@@ -285,26 +273,11 @@ export default function App() {
     }
   };
 
-  const handleCompile = async () => {
-    setIsCompiling(true);
-    setExecutionResult(null);
-    try {
-      const result = await simulateExecution(code, currentChallenge);
-      setExecutionResult(result);
-    } catch (error) {
-      console.error("Erro na compilação:", error);
-      setExecutionResult({ output: "Erro ao tentar compilar o código. Tente novamente.", isError: true });
-    } finally {
-      setIsCompiling(false);
-    }
-  };
-
   const handleReset = () => {
     if (window.confirm("Deseja realmente limpar seu código e recomeçar este desafio?")) {
       setCode(currentChallenge.templateCode);
       setAnalysis(null);
       setUsedTips([]);
-      setExecutionResult(null);
     }
   };
 
@@ -596,28 +569,6 @@ export default function App() {
             value={code}
             onChange={(e) => setCode(e.target.value)}
           />
-          
-          {/* Terminal de Saída */}
-          <AnimatePresence>
-            {executionResult && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className={`border-t ${executionResult.isError ? 'border-red-900 bg-red-950/20' : 'border-slate-700 bg-slate-950/50'}`}
-              >
-                <div className="px-4 py-2 flex items-center gap-2 border-b border-slate-800/50">
-                  <Terminal size={14} className={executionResult.isError ? 'text-red-400' : 'text-slate-400'} />
-                  <span className={`text-[10px] font-bold uppercase tracking-widest ${executionResult.isError ? 'text-red-400' : 'text-slate-400'}`}>
-                    {executionResult.isError ? 'Erro de Compilação / Execução' : 'Saída do Terminal'}
-                  </span>
-                </div>
-                <pre className={`p-6 font-mono text-sm overflow-x-auto leading-relaxed ${executionResult.isError ? 'text-red-300' : 'text-emerald-300'}`}>
-                  {executionResult.output || 'O programa não gerou nenhuma saída.'}
-                </pre>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </section>
 
         {/* Dicas */}
@@ -653,31 +604,9 @@ export default function App() {
         {/* Ações */}
         <section className="flex flex-wrap gap-4 justify-center">
           <button 
-            onClick={handleCompile}
-            disabled={isCompiling || isAnalyzing}
-            className={`bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-all ${(isCompiling || isAnalyzing) ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {isCompiling ? (
-              <>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                >
-                  <RotateCcw size={20} />
-                </motion.div>
-                Compilando...
-              </>
-            ) : (
-              <>
-                <Play size={20} /> Compilar e Rodar
-              </>
-            )}
-          </button>
-
-          <button 
             onClick={handleVerify} 
-            disabled={isAnalyzing || isCompiling}
-            className={`bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-all ${(isAnalyzing || isCompiling) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isAnalyzing}
+            className={`bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-all ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {isAnalyzing ? (
               <>
@@ -795,30 +724,55 @@ export default function App() {
 
         {/* Histórico */}
         <section className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><History className="text-slate-400" size={24} /> Histórico de tentativas</h2>
-            <div className="flex gap-2">
-              <button onClick={exportJSON} className="text-xs font-bold text-blue-600 px-3 py-1.5 rounded-lg flex items-center gap-1"><FileJson size={14} /> JSON</button>
-              <button onClick={exportCSV} className="text-xs font-bold text-emerald-600 px-3 py-1.5 rounded-lg flex items-center gap-1"><FileSpreadsheet size={14} /> CSV</button>
-            </div>
-          </div>
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><History className="text-blue-600" size={24} /> Seu histórico de tentativas</h2>
           <div className="space-y-4">
-            {attempts.length === 0 ? <p className="text-center py-8 text-slate-400 italic">Nenhuma tentativa registrada para este desafio.</p> : attempts.map((att) => (
-              <div key={att.id} className="p-4 border border-slate-100 rounded-lg flex flex-col md:flex-row justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">{new Date(att.timestamp).toLocaleString('pt-BR')}</p>
-                  <p className="text-sm font-semibold text-slate-700 mt-1">Estado: <span className="capitalize text-blue-600">{att.category}</span></p>
-                  <p className="text-xs text-slate-500 mt-1">Dicas: {att.tipsUsed.length}</p>
+            {attempts.length > 0 ? (
+              attempts.map((attempt) => (
+                <div key={attempt.id} className="p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      attempt.category === 'solução adequada' ? 'bg-emerald-100 text-emerald-700' :
+                      attempt.category === 'quase completa' ? 'bg-blue-100 text-blue-700' :
+                      'bg-slate-100 text-slate-700'
+                    }`}>
+                      {attempt.category}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">{new Date(attempt.timestamp).toLocaleString()}</span>
+                  </div>
+                  <p className="text-sm text-slate-700 line-clamp-2 mb-2">{attempt.feedback}</p>
+                  <button 
+                    onClick={() => setCode(attempt.code)}
+                    className="text-blue-600 text-[10px] font-bold hover:underline"
+                  >
+                    Restaurar este código
+                  </button>
                 </div>
-                <div className="md:text-right">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Hipótese</p>
-                  <p className="text-sm text-slate-600 italic">{att.difficultyHypothesis}</p>
-                </div>
+              ))
+            ) : (
+              <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-2xl">
+                <p className="text-slate-400 text-sm">Você ainda não fez nenhuma tentativa neste desafio.</p>
               </div>
-            ))}
+            )}
           </div>
+          {attempts.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-slate-100 flex gap-4">
+              <button onClick={exportJSON} className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
+                <FileJson size={16} /> Exportar JSON
+              </button>
+              <button onClick={exportCSV} className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
+                <FileSpreadsheet size={16} /> Exportar CSV
+              </button>
+            </div>
+          )}
         </section>
       </main>
+
+      {/* Footer */}
+      <footer className="max-w-4xl mx-auto px-6 mt-20 pt-10 border-t border-slate-200 text-center">
+        <p className="text-slate-400 text-sm">
+          Trilha de Programação em C • Sistema de Feedback Pedagógico com IA
+        </p>
+      </footer>
     </div>
   );
 
