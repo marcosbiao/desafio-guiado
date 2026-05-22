@@ -70,7 +70,7 @@ export function useChallengeState(user: UserProfile | null, challenge: Challenge
   }, [user, challenge.id, isAuthReady]);
 
   /**
-   * Solicita análise pedagógica ao backend.
+   * Solicita análise pedagógica pelo serviço de IA do front end.
    */
   const handleVerify = useCallback(async () => {
     const now = Date.now();
@@ -95,27 +95,18 @@ export function useChallengeState(user: UserProfile | null, challenge: Challenge
     }
 
     try {
-      // 1. Tentar análise via API (IA)
-      let result: AnalysisResult;
-      let analysisModeUsed: 'gemini_primary' | 'gemini_fallback' = 'gemini_primary';
-
-      try {
-        result = await callAnalyzeApi({
-          code,
-          challengeId: challenge.id,
-          userId: user?.uid || null
+      // 1. Tentar análise via Gemini no front end, com fallback pedagógico interno
+      const result: AnalysisResult = await callAnalyzeApi({
+        code,
+        challengeId: challenge.id,
+        userId: user?.uid || null
+      });
+      
+      if (user && sessionId && sessionId.startsWith('sess_')) {
+        eventService.logEvent(user.uid, challenge.id, sessionId, 'analysis_success', { 
+          category: result.category,
+          model: result.modelUsed 
         });
-        
-        if (user && sessionId && sessionId.startsWith('sess_')) {
-          eventService.logEvent(user.uid, challenge.id, sessionId, 'analysis_success', { 
-            category: result.category,
-            model: result.modelUsed 
-          });
-        }
-      } catch (apiErr: any) {
-        console.error("Erro na chamada da API de análise:", apiErr);
-        const errorMessage = apiErr.message || "Não foi possível realizar a análise pedagógica no momento.";
-        throw new Error(errorMessage);
       }
 
       setAnalysis(result);
@@ -157,7 +148,7 @@ export function useChallengeState(user: UserProfile | null, challenge: Challenge
 
     } catch (err: any) {
       console.error("Erro na verificação:", err);
-      setUiState(prev => ({ ...prev, error: err.message || "Falha na comunicação com o servidor de análise." }));
+      setUiState(prev => ({ ...prev, error: "Não foi possível concluir a análise neste momento. Revise seu código e tente novamente em alguns instantes." }));
       
       if (user && sessionId && sessionId.startsWith('sess_')) {
         eventService.logEvent(user.uid, challenge.id, sessionId, 'analysis_error', { message: err.message });
