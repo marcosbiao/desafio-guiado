@@ -17,11 +17,6 @@ export const appConfig = {
     collections: APP_CONSTANTS.COLLECTIONS,
   },
 
-  // Configuração de API
-  api: {
-    analyzeUrl: '/api/analyze',
-  },
-
   // Configuração de Ambiente
   isProduction: process.env.NODE_ENV === 'production',
   
