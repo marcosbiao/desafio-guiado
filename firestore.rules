@@ -10,7 +10,7 @@
 //   - displayName: string (optional) - User's display name
 //   - photoURL: string (optional, url format) - User's photo URL
 //   - role: string (required, enum: ['admin', 'student']) - User's role
-//   - createdAt: string (required, ISO 8601) - Creation timestamp
+//   - createdAt: timestamp (required) - Creation timestamp
 //
 // Collection: attempts
 // Document ID: attemptId (Unique ID)
@@ -18,12 +18,20 @@
 //   - id: string (required) - Unique ID
 //   - userId: string (required) - Owner's UID
 //   - challengeId: string (required) - Challenge ID
-//   - timestamp: string (required, ISO 8601) - Submission timestamp
+//   - challengeVersion: string (required) - Challenge Version
+//   - timestamp: timestamp (required) - Submission timestamp
 //   - code: string (required, max 50000 chars) - Student's code
-//   - category: string (required) - Heuristic category
+//   - category: string (required, enum: ['tentativa inicial', 'parcialmente correta', 'quase completa', 'solução adequada'])
+//   - confidence: string (required, enum: ['baixa', 'media', 'alta'])
 //   - tipsUsed: list (required) - List of tip IDs
-//   - feedback: string (required) - Generated feedback
+//   - feedback: map (required) - Structured feedback {good, review, nextStep}
 //   - difficultyHypothesis: string (required) - Identified difficulty
+//   - errorType: list (required) - List of error types
+//   - suggestedNextStep: string (required)
+//   - analysisSummary: string (required)
+//   - analysisMode: string (required, enum: ['gemini_primary', 'gemini_fallback'])
+//   - modelUsed: string (required)
+//   - promptVersion: string (required)
 //
 // ===============================================================
 
@@ -43,10 +51,11 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // ADMIN BASEADO EM E-MAIL (Bootstrap) OU DOCUMENTO
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "biao.marcosvinicius@gmail.com" && request.auth.token.email_verified == true));
+      return isAuthenticated() && 
+             (request.auth.token.email == "biao.marcosvinicius@gmail.com" && request.auth.token.email_verified == true ||
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
     function hasRequiredFields(fields) {
@@ -80,40 +89,101 @@ service cloud.firestore {
              data.email == request.auth.token.email &&
              isValidEmail(data.email) &&
              data.role in ['admin', 'student'] &&
-             isValidDateString(data.createdAt) &&
+             data.createdAt is timestamp &&
              (data.displayName == null || (data.displayName is string && data.displayName.size() < 100)) &&
              (data.photoURL == null || isValidUrl(data.photoURL));
     }
 
     function isValidAttempt(data) {
-      return hasRequiredFields(['id', 'userId', 'challengeId', 'timestamp', 'code', 'category', 'tipsUsed', 'feedback', 'difficultyHypothesis']) &&
-             hasOnlyAllowedFields(['id', 'userId', 'challengeId', 'timestamp', 'code', 'category', 'tipsUsed', 'feedback', 'difficultyHypothesis']) &&
+      return hasRequiredFields([
+        'userId', 'challengeId', 'challengeVersion', 'timestamp', 'code', 
+        'category', 'confidence', 'tipsUsed', 'feedback', 'difficultyHypothesis', 'errorType',
+        'suggestedNextStep', 'analysisSummary', 'analysisMode', 'modelUsed', 'promptVersion',
+        'sessionId', 'processMetrics'
+      ]) &&
+             hasOnlyAllowedFields([
+        'userId', 'challengeId', 'challengeVersion', 'timestamp', 'code', 
+        'category', 'confidence', 'tipsUsed', 'feedback', 'difficultyHypothesis', 'errorType',
+        'suggestedNextStep', 'analysisSummary', 'analysisMode', 'modelUsed', 'promptVersion',
+        'sessionId', 'processMetrics'
+      ]) &&
              data.userId == request.auth.uid &&
-             data.code is string && data.code.size() < 50000 &&
-             data.category is string &&
+             data.code is string && data.code.size() <= 50000 &&
+             data.category in ['tentativa inicial', 'parcialmente correta', 'quase completa', 'solução adequada'] &&
+             data.confidence in ['baixa', 'media', 'alta'] &&
              data.tipsUsed is list &&
-             isValidDateString(data.timestamp);
+             data.feedback is map &&
+             data.difficultyHypothesis is string && data.difficultyHypothesis.size() < 1000 &&
+             data.errorType is list &&
+             data.suggestedNextStep is string &&
+             data.analysisSummary is string &&
+             data.analysisMode in ['gemini_primary', 'gemini_fallback'] &&
+             data.modelUsed is string &&
+             data.promptVersion is string &&
+             data.timestamp is timestamp &&
+             data.sessionId is string &&
+             data.processMetrics is map;
     }
 
     // ===============================================================
     // Rules
     // ===============================================================
 
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'student' || isAdmin());
-      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+    // Bloqueio padrão
+    match /{path=**} {
+      allow read, write: if false;
+    }
 
+    match /users/{userId} {
+      // Leitura: apenas o dono ou admin
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Criação: apenas o dono, validando dados e impedindo auto-atribuição de admin (a menos que já seja admin)
+      allow create: if isOwner(userId) && 
+                    isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'student' || isAdmin());
+      
+      // Update: apenas o dono, impedindo alteração de role (a menos que seja admin)
+      allow update: if (isOwner(userId) && 
+                        isValidUser(request.resource.data) && 
+                        request.resource.data.role == resource.data.role) || 
+                    isAdmin();
+
+      // Subcoleção de Tentativas
       match /attempts/{attemptId} {
         allow read: if isOwner(userId) || isAdmin();
+        
+        // Apenas criação pelo dono com dados validados
         allow create: if isOwner(userId) && isValidAttempt(request.resource.data);
+        
+        // Tentativas são imutáveis por design pedagógico e segurança
+        allow update: if false;
+        
+        // Apenas admin pode deletar histórico se necessário
         allow delete: if isAdmin();
-        allow update: if false; // Attempts are immutable
       }
     }
 
-    match /{path=**} {
-      allow read, write: if false;
+    // Coleção de Sessões
+    match /sessions/{sessionId} {
+      // Leitura: apenas o dono ou admin
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId || isAdmin());
+      
+      // Criação: apenas o dono
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
+      
+      // Update: apenas o dono, permitindo atualizar métricas e timestamps
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId &&
+                    request.resource.data.userId == resource.data.userId;
+    }
+
+    // Coleção de Eventos (Pesquisa)
+    match /events/{eventId} {
+      // Leitura: apenas admin
+      allow read: if isAdmin();
+      
+      // Criação: apenas usuários autenticados (dono do evento)
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
     }
   }
 }

@@ -1,5 +1,6 @@
 {
   "name": "Desafio C: Estrutura Condicional",
   "description": "Aplicação educacional guiada para prática de estruturas de decisão if/else em linguagem C.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
