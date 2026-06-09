@@ -27,6 +27,10 @@ import { desafioMatrizesContarPares } from './c_matrizes_contar_pares.ts';
 import { desafioMatrizesMaiorValor } from './c_matrizes_maior_valor.ts';
 import { desafioMatrizesSomaDiagonalPrincipal } from './c_matrizes_soma_diagonal_principal.ts';
 
+import { desafioFuncoesMaiorTresNumeros } from './c_funcoes_maior_tres_numeros.ts';
+import { desafioFuncoesMediaDoisNumeros } from './c_funcoes_media_dois_numeros.ts';
+import { desafioFuncoesDistanciaEntrePontos } from './c_funcoes_distancia_entre_pontos.ts';
+
 /**
  * Índice central de desafios do aplicativo.
  * Facilita a manutenção e expansão da base pedagógica.
@@ -58,7 +62,11 @@ export const CHALLENGES: Challenge[] = [
   { ...desafioMatrizesSomaPrimeiraLinha, categoryId: 'matrizes' },
   { ...desafioMatrizesContarPares, categoryId: 'matrizes' },
   { ...desafioMatrizesMaiorValor, categoryId: 'matrizes' },
-  { ...desafioMatrizesSomaDiagonalPrincipal, categoryId: 'matrizes' }
+  { ...desafioMatrizesSomaDiagonalPrincipal, categoryId: 'matrizes' },
+
+  { ...desafioFuncoesMaiorTresNumeros, categoryId: 'funcoes' },
+  { ...desafioFuncoesMediaDoisNumeros, categoryId: 'funcoes' },
+  { ...desafioFuncoesDistanciaEntrePontos, categoryId: 'funcoes' }
 ];
 
 /**

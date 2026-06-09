@@ -74,6 +74,14 @@ const CATEGORIES: Category[] = [
     theme: 'CCI07',
     status: 'Disponível',
     challengesCount: 6
+  },
+  {
+    id: 'funcoes',
+    title: 'Funções e Procedimentos',
+    description: 'Pratique decomposição de soluções em funções com retorno, procedimentos void, parâmetros, escopo principal e chamadas de subprogramas.',
+    theme: 'CCI07',
+    status: 'Disponível',
+    challengesCount: 3
   }
 ];
 
@@ -114,6 +122,8 @@ export function HomePage({
         return <Layers className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 transition-colors" />;
       case 'matrizes':
         return <Grid className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 transition-colors" />;
+      case 'funcoes':
+        return <Code2 className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 transition-colors" />;
       default:
         return <BookOpen className="w-6 h-6 text-indigo-600" />;
     }

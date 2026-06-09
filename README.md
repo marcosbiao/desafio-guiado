@@ -6,7 +6,7 @@ Este projeto faz parte do meu trabalho de doutorado e ainda esta em execucao. Po
 
 ## Requisitos
 
-- Node.js
+- Node.js 20.19+ recomendado
 - npm
 
 ## Configuracao
@@ -31,11 +31,15 @@ Inicie o ambiente de desenvolvimento:
 npm run dev
 ```
 
-Depois, acesse a URL exibida no terminal.
+Depois, acesse:
+
+```text
+http://localhost:3000/desafio-guiado/
+```
 
 ## Scripts Disponiveis
 
-- `npm run dev`: inicia o servidor de desenvolvimento.
+- `npm run dev`: inicia o servidor de desenvolvimento do Vite.
 - `npm run build`: gera a versao de producao.
 - `npm run start`: executa a versao gerada em `dist/`.
 - `npm run lint`: valida os tipos com TypeScript.
